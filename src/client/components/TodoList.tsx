@@ -1,6 +1,8 @@
 import type { SVGProps } from 'react'
 
 import * as Checkbox from '@radix-ui/react-checkbox'
+import { useState, useEffect, useRef } from 'react'
+import autoAnimate, { getTransitionSizes } from '@formkit/auto-animate'
 
 import { api } from '@/utils/client/api'
 
@@ -63,28 +65,182 @@ import { api } from '@/utils/client/api'
  *  - https://auto-animate.formkit.com
  */
 
-export const TodoList = () => {
-  const { data: todos = [] } = api.todo.getAll.useQuery({
-    statuses: ['completed', 'pending'],
+export const TodoList = ({
+  selectedTab,
+}: {
+  selectedTab: 'all' | 'pending' | 'completed'
+}) => {
+  const { data: todos = [], refetch: refetchTodos } = api.todo.getAll.useQuery({
+    statuses: selectedTab === 'all' ? ['pending', 'completed'] : [selectedTab],
   })
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  const updateTodoStatusMutation = api.todoStatus.update.useMutation()
+  const deleteTodoMutation = api.todo.delete.useMutation()
+
+  // const fakeCompletedTodo = {
+  //   id: 1000,
+  //   body: 'This is a completed todo',
+  //   status: 'completed',
+  // }
+  // const fakeCompletedTodo2 = {
+  //   id: 1001,
+  //   body: 'This is a completed todo 2',
+  //   status: 'completed',
+  // }
+
+  // const todosWithFakeCompleted = [
+  //   ...todos,
+  //   fakeCompletedTodo,
+  //   fakeCompletedTodo2,
+  // ]
+  const handleTodoStatusChange = async (
+    todoId: number,
+    status: 'completed' | 'pending'
+  ) => {
+    try {
+      setIsUpdating(true)
+      await updateTodoStatusMutation.mutateAsync({
+        todoId: todoId,
+        status: status,
+      })
+      setIsUpdating(false)
+
+      refetchTodos()
+    } catch (error) {
+      setIsUpdating(false)
+      // Handle error if needed
+      // console.error('Update todo status failed:', error)
+    }
+  }
+
+  const handleTodoDelete = async (todoId: number) => {
+    try {
+      setIsUpdating(true)
+      await deleteTodoMutation.mutateAsync({
+        id: todoId,
+      })
+      setIsUpdating(false)
+
+      refetchTodos()
+    } catch (error) {
+      setIsUpdating(false)
+      // Handle error if needed
+      // console.error('Delete todo failed:', error)
+    }
+  }
+
+  const parentElementRef = useRef(null)
+  useEffect(() => {
+    // Call autoAnimate with the bouncy logic inside the useEffect hook
+    if (parentElementRef.current) {
+      autoAnimate(
+        parentElementRef.current,
+        (el, action, oldCoords, newCoords) => {
+          let keyframes: Keyframe[] | PropertyIndexedKeyframes | null = null
+          // supply a different set of keyframes for each action
+          if (action === 'add') {
+            keyframes = [
+              { transform: 'scale(0)', opacity: 0 },
+              { transform: 'scale(1.15)', opacity: 1, offset: 0.75 },
+              { transform: 'scale(1)', opacity: 1 },
+            ]
+          }
+          // keyframes can have as many "steps" as you prefer
+          // and you can use the 'offset' key to tune the timing
+          if (action === 'remove') {
+            keyframes = [
+              { transform: 'scale(1)', opacity: 1 },
+              { transform: 'scale(1.15)', opacity: 1, offset: 0.33 },
+              { transform: 'scale(0.75)', opacity: 0.1, offset: 0.5 },
+              { transform: 'scale(0.5)', opacity: 0 },
+            ]
+          }
+          if (action === 'remain' && oldCoords && newCoords) {
+            // for items that remain, calculate the delta
+            // from their old position to their new position
+            const deltaX = oldCoords.left - newCoords.left
+            const deltaY = oldCoords.top - newCoords.top
+            // use the getTransitionSizes() helper function to
+            // get the old and new widths of the elements
+            const [widthFrom, widthTo, heightFrom, heightTo] =
+              getTransitionSizes(el, oldCoords, newCoords)
+            // set up our steps with our positioning keyframes
+            const start: Keyframe = {
+              transform: `translate(${deltaX}px, ${deltaY}px)`,
+            }
+            const mid: Keyframe = {
+              transform: `translate(${deltaX * -0.15}px, ${deltaY * -0.15}px)`,
+              offset: 0.75,
+            }
+            const end: Keyframe = { transform: `translate(0, 0)` }
+            // if the dimensions changed, animate them too.
+            if (widthFrom !== undefined && widthTo !== undefined) {
+              start.width = `${widthFrom}px`
+              mid.width = `${
+                widthFrom >= widthTo ? widthTo / 1.05 : widthTo * 1.05
+              }px`
+              end.width = `${widthTo}px`
+            }
+            if (heightFrom !== undefined && heightTo !== undefined) {
+              start.height = `${heightFrom}px`
+              mid.height = `${
+                heightFrom >= heightTo ? heightTo / 1.05 : heightTo * 1.05
+              }px`
+              end.height = `${heightTo}px`
+            }
+            keyframes = [start, mid, end]
+          }
+          // return our KeyframeEffect() and pass
+          // it the chosen keyframes.
+          return new KeyframeEffect(el, keyframes, {
+            duration: 600,
+            easing: 'ease-out',
+          })
+        }
+      )
+    }
+  }, [])
 
   return (
-    <ul className="grid grid-cols-1 gap-y-3">
+    <ul className="grid grid-cols-1 gap-y-3" ref={parentElementRef}>
       {todos.map((todo) => (
         <li key={todo.id}>
           <div className="flex items-center rounded-12 border border-gray-200 px-4 py-3 shadow-sm">
             <Checkbox.Root
               id={String(todo.id)}
               className="flex h-6 w-6 items-center justify-center rounded-6 border border-gray-300 focus:border-gray-700 focus:outline-none data-[state=checked]:border-gray-700 data-[state=checked]:bg-gray-700"
+              checked={todo.status === 'completed'}
+              onChange={() => {
+                if (!isUpdating) {
+                  handleTodoStatusChange(
+                    todo.id,
+                    todo.status === 'completed' ? 'pending' : 'completed'
+                  )
+                }
+              }}
             >
               <Checkbox.Indicator>
-                <CheckIcon className="h-4 w-4 text-white" />
+                {todo.status === 'completed' ? (
+                  <CheckIcon className="h-4 w-4 text-white" />
+                ) : null}
               </Checkbox.Indicator>
             </Checkbox.Root>
 
-            <label className="block pl-3 font-medium" htmlFor={String(todo.id)}>
+            <label
+              className={`${
+                todo.status === 'completed' ? 'line-through' : ''
+              } block pl-3 font-medium`}
+              htmlFor={String(todo.id)}
+            >
               {todo.body}
             </label>
+            <div
+              className="text-red-500 ml-auto flex h-6 w-6 cursor-pointer items-center justify-center rounded-full"
+              onClick={() => handleTodoDelete(todo.id)}
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </div>
           </div>
         </li>
       ))}

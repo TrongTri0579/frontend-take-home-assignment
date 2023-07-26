@@ -35,8 +35,23 @@ export const CreateTodoForm = () => {
       },
     })
 
+  //Question 2: fix error with keyboard accessible
+  const handleSubmit = (e: { preventDefault: () => void }) => {
+    e.preventDefault() // Prevents the default form submission behavior
+    if (!todoBody.trim()) {
+      return
+    } // Ignore empty todo
+    createTodo({
+      body: todoBody,
+    })
+    setTodoBody('')
+  }
+
   return (
-    <form className="group flex items-center justify-between rounded-12 border border-gray-200 py-2 pr-4 focus-within:border-gray-400">
+    <form
+      onSubmit={handleSubmit}
+      className="group flex items-center justify-between rounded-12 border border-gray-200 py-2 pr-4 focus-within:border-gray-400"
+    >
       <label htmlFor={TODO_INPUT_ID} className="sr-only">
         Add todo
       </label>
@@ -60,6 +75,11 @@ export const CreateTodoForm = () => {
             body: todoBody,
           })
           setTodoBody('')
+        }}
+        //Question 1: Style the 'Add' so that it looks like the design in Figma.
+        className="flex items-center justify-center gap-2 rounded-full bg-gray-700 px-8 py-2 font-semibold text-white"
+        style={{
+          borderRadius: '9999px',
         }}
       >
         Add
